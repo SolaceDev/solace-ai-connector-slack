@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "solace_ai_connector_slack"
+version = "0.0.1"
+authors = [
+  { name="Edward Funnekotter", email="edward.funnekotter@solace.com" },
+]
+description = "Slack plugin for the Solace AI Connector - this provides an input and output component to talk to Slack"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "PyYAML>=6.0.1",
+    "slack_bolt>=1.18.1",
+    "solace_ai_connector>=0.0.1",
+]
+
+[project.urls]
+homepage = "https://github.com/SolaceLabs/solace-ai-connector-slack"
+repository = "https://github.com/SolaceLabs/solace-ai-connector-slack"
+documentation = "https://github.com/SolaceLabs/solace-ai-connector-slack/blob/main/docs/index.md"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/solace_ai_connector_slack"]
