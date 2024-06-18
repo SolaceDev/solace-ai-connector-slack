@@ -1,4 +1,5 @@
 import base64
+import re
 
 
 from solace_ai_connector.common.log import log
@@ -25,6 +26,12 @@ info = {
             "name": "share_slack_connection",
             "type": "string",
             "description": "Share the Slack connection with other components in this instance.",
+        },
+        {
+            "name": "correct_markdown_formatting",
+            "type": "boolean",
+            "description": "Correct markdown formatting in messages to conform to Slack markdown.",
+            "default": "true",
         },
     ],
     "input_schema": {
@@ -106,6 +113,7 @@ info = {
 class SlackOutput(SlackBase):
     def __init__(self, **kwargs):
         super().__init__(info, **kwargs)
+        self.fix_formatting = self.get_config("correct_markdown_formatting", True)
 
     def invoke(self, message, data):
         message_info = data.get("message_info")
@@ -141,6 +149,8 @@ class SlackOutput(SlackBase):
                     messages = []
 
             for text in messages:
+                if self.fix_formatting:
+                    text = self.fix_markdown(text)
                 if stream:
                     if ack_msg_ts:
                         try:
@@ -174,3 +184,13 @@ class SlackOutput(SlackBase):
                 self.app.client.chat_delete(channel=channel, ts=ack_msg_ts)
         except Exception:
             pass
+
+    def fix_markdown(self, message):
+        # Fix links - the LLM is very stubborn about giving markdown links
+        # Find [text](http...) and replace with <http...|text>
+        message = re.sub(r"\[(.*?)\]\((http.*?)\)", r"<\2|\1>", message)
+        # Remove the language specifier from code blocks
+        message = re.sub(r"```[a-z]+\n", "```", message)
+        # Fix bold
+        message = re.sub(r"\*\*(.*?)\*\*", r"*\1*", message)
+        return message

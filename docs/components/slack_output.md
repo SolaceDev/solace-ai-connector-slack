@@ -11,6 +11,7 @@ component_config:
   slack_bot_token: <string>
   slack_app_token: <string>
   share_slack_connection: <string>
+  correct_markdown_formatting: <boolean>
 ```
 
 | Parameter | Required | Default | Description |
@@ -18,6 +19,7 @@ component_config:
 | slack_bot_token | False |  | The Slack bot token to connect to Slack. |
 | slack_app_token | False |  | The Slack app token to connect to Slack. |
 | share_slack_connection | False |  | Share the Slack connection with other components in this instance. |
+| correct_markdown_formatting | False | true | Correct markdown formatting in messages to conform to Slack markdown. |
 
 
 ## Component Input Schema
