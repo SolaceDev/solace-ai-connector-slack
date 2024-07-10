@@ -1,6 +1,7 @@
 import base64
 import re
 
+from prettytable import PrettyTable
 
 from solace_ai_connector.common.log import log
 from .slack_base import SlackBase
@@ -193,4 +194,32 @@ class SlackOutput(SlackBase):
         message = re.sub(r"```[a-z]+\n", "```", message)
         # Fix bold
         message = re.sub(r"\*\*(.*?)\*\*", r"*\1*", message)
+
+        # Reformat a table to be Slack compatible
+        # This means to first detect a table, then rewrite it in fixed-width font
+        # surrounded by triple backticks and proper spacing
+
+        # Detect a table and extract all consecutive rows
+
         return message
+
+    def convert_markdown_tables(message):
+        def markdown_to_fixed_width(match):
+            table_str = match.group(0)
+            rows = [
+                line.strip().split("|")
+                for line in table_str.split("\n")
+                if line.strip()
+            ]
+            headers = [cell.strip() for cell in rows[0] if cell.strip()]
+
+            pt = PrettyTable()
+            pt.field_names = headers
+
+            for row in rows[2:]:
+                pt.add_row([cell.strip() for cell in row if cell.strip()])
+
+            return f"```\n{pt.get_string()}\n```"
+
+        pattern = r"\|.*\|[\n\r]+\|[-:| ]+\|[\n\r]+((?:\|.*\|[\n\r]+)+)"
+        return re.sub(pattern, markdown_to_fixed_width, message)
