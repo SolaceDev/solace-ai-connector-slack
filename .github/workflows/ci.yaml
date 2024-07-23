@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  id-token: write
+  checks: write
+  pull-requests: write
+  contents: write
+
+jobs:
+  ci:
+    uses: SolaceDev/solace-public-workflows/.github/workflows/hatch_ci.yml@v1.0.0
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
