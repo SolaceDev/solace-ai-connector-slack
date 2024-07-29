@@ -2,6 +2,7 @@ import base64
 import re
 from datetime import datetime
 
+from prettytable import PrettyTable
 
 from solace_ai_connector.common.log import log
 from .slack_base import SlackBase
@@ -245,6 +246,10 @@ class SlackOutput(SlackBase):
         message = re.sub(r"```[a-z]+\n", "```", message)
         # Fix bold
         message = re.sub(r"\*\*(.*?)\*\*", r"*\1*", message)
+
+        # Reformat a table to be Slack compatible
+        message = self.convert_markdown_tables(message)
+
         return message
 
     def get_streaming_state(self, uuid):
@@ -272,3 +277,24 @@ class SlackOutput(SlackBase):
         for uuid, state in list(self.streaming_state.items()):
             if (now - state["create_time"]).total_seconds() > age:
                 del self.streaming_state[uuid]
+
+    def convert_markdown_tables(self, message):
+        def markdown_to_fixed_width(match):
+            table_str = match.group(0)
+            rows = [
+                line.strip().split("|")
+                for line in table_str.split("\n")
+                if line.strip()
+            ]
+            headers = [cell.strip() for cell in rows[0] if cell.strip()]
+
+            pt = PrettyTable()
+            pt.field_names = headers
+
+            for row in rows[2:]:
+                pt.add_row([cell.strip() for cell in row if cell.strip()])
+
+            return f"\n```\n{pt.get_string()}\n```\n"
+
+        pattern = r"\|.*\|[\n\r]+\|[-:| ]+\|[\n\r]+((?:\|.*\|[\n\r]+)+)"
+        return re.sub(pattern, markdown_to_fixed_width, message)
