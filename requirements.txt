@@ -2,3 +2,5 @@ PyYAML>=6.0.1
 slack_bolt>=1.18.1
 solace_ai_connector>=0.1.1
 prettytable>=3.10.0
+pytest>=8.2.2
+

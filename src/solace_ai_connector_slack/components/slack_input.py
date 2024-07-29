@@ -297,9 +297,10 @@ class SlackReceiver(threading.Thread):
             "event_ts": event.get("event_ts"),
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
+            "input_type": "slack",
         }
 
-        if self.acknowledgement_message:
+        if self.acknowledgement_message and event.get("channel_type") == "im":
             ack_msg_ts = self.app.client.chat_postMessage(
                 channel=event["channel"],
                 text=self.acknowledgement_message,
@@ -323,6 +324,8 @@ class SlackReceiver(threading.Thread):
 
     def process_text_for_mentions(self, text):
         mention_emails = []
+        if "<@" not in text:
+            return text, mention_emails
         for mention in text.split("<@"):
             if mention.startswith("!"):
                 mention = mention[1:]
