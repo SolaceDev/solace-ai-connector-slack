@@ -1,5 +1,6 @@
 import base64
 import re
+from datetime import datetime
 
 
 from solace_ai_connector.common.log import log
@@ -114,15 +115,24 @@ class SlackOutput(SlackBase):
     def __init__(self, **kwargs):
         super().__init__(info, **kwargs)
         self.fix_formatting = self.get_config("correct_markdown_formatting", True)
+        self.streaming_state = {}
 
     def invoke(self, message, data):
         message_info = data.get("message_info")
         content = data.get("content")
         text = content.get("text")
         stream = content.get("stream")
+        first_streamed_chunk = content.get("first_streamed_chunk")
+        last_streamed_chunk = content.get("last_streamed_chunk")
+        uuid = content.get("uuid")
         channel = message_info.get("channel")
         thread_ts = message_info.get("ts")
         ack_msg_ts = message_info.get("ack_msg_ts")
+
+        if not channel:
+            log.error("slack_output: No channel specified in message")
+            self.discard_current_message()
+            return None
 
         return {
             "channel": channel,
@@ -131,6 +141,9 @@ class SlackOutput(SlackBase):
             "thread_ts": thread_ts,
             "ack_msg_ts": ack_msg_ts,
             "stream": stream,
+            "first_streamed_chunk": first_streamed_chunk,
+            "last_streamed_chunk": last_streamed_chunk,
+            "uuid": uuid,
         }
 
     def send_message(self, message):
@@ -141,6 +154,9 @@ class SlackOutput(SlackBase):
             files = message.get_data("previous:files") or []
             thread_ts = message.get_data("previous:ts")
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
+            first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
+            last_streamed_chunk = message.get_data("previous:last_streamed_chunk")
+            uuid = message.get_data("previous:uuid")
 
             if not isinstance(messages, list):
                 if messages is not None:
@@ -148,23 +164,59 @@ class SlackOutput(SlackBase):
                 else:
                     messages = []
 
-            for text in messages:
+            for index, text in enumerate(messages):
+                if not text or not isinstance(text, str):
+                    continue
+
                 if self.fix_formatting:
                     text = self.fix_markdown(text)
+
+                if index != 0:
+                    text = "\n" + text
+
+                if first_streamed_chunk:
+                    streaming_state = self.add_streaming_state(uuid)
+                else:
+                    streaming_state = self.get_streaming_state(uuid)
+                    if not streaming_state:
+                        streaming_state = self.add_streaming_state(uuid)
+
                 if stream:
-                    if ack_msg_ts:
+                    if streaming_state.get("completed"):
+                        # We can sometimes get a message after the stream has completed
+                        continue
+
+                    streaming_state["completed"] = last_streamed_chunk
+                    ts = streaming_state.get("ts")
+                    if ts:
                         try:
                             self.app.client.chat_update(
-                                channel=channel, ts=ack_msg_ts, text=text
+                                channel=channel, ts=ts, text=text
                             )
                         except Exception:
                             # It is normal to possibly get an update after the final
                             # message has already arrived and deleted the ack message
                             pass
+                    else:
+                        response = self.app.client.chat_postMessage(
+                            channel=channel, text=text, thread_ts=thread_ts
+                        )
+                        streaming_state["ts"] = response["ts"]
+
                 else:
-                    self.app.client.chat_postMessage(
-                        channel=channel, text=text, thread_ts=thread_ts
-                    )
+                    # Not streaming
+                    ts = streaming_state.get("ts")
+                    streaming_state["completed"] = True
+                    if not ts:
+                        self.app.client.chat_postMessage(
+                            channel=channel, text=text, thread_ts=thread_ts
+                        )
+                    # if ts:
+                    #     self.app.client.chat_update(channel=channel, ts=ts, text=text)
+                    # else:
+                    #     self.app.client.chat_postMessage(
+                    #         channel=channel, text=text, thread_ts=thread_ts
+                    #     )
 
             for file in files:
                 file_content = base64.b64decode(file["content"])
@@ -180,7 +232,7 @@ class SlackOutput(SlackBase):
         super().send_message(message)
 
         try:
-            if ack_msg_ts and not stream:
+            if ack_msg_ts:
                 self.app.client.chat_delete(channel=channel, ts=ack_msg_ts)
         except Exception:
             pass
@@ -194,3 +246,29 @@ class SlackOutput(SlackBase):
         # Fix bold
         message = re.sub(r"\*\*(.*?)\*\*", r"*\1*", message)
         return message
+
+    def get_streaming_state(self, uuid):
+        return self.streaming_state.get(uuid)
+
+    def add_streaming_state(self, uuid):
+        state = {
+            "create_time": datetime.now(),
+        }
+        self.streaming_state[uuid] = state
+        self.age_out_streaming_state()
+        return state
+
+    def delete_streaming_state(self, uuid):
+        try:
+            del self.streaming_state[uuid]
+        except KeyError:
+            pass
+
+    def age_out_streaming_state(self, age=60):
+        # Note that we can later optimize this by using an array of streaming_state that
+        # is ordered by create_time and then we can just remove the first element until
+        # we find one that is not expired.
+        now = datetime.now()
+        for uuid, state in list(self.streaming_state.items()):
+            if (now - state["create_time"]).total_seconds() > age:
+                del self.streaming_state[uuid]
