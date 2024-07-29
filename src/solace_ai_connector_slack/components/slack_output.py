@@ -246,6 +246,8 @@ class SlackOutput(SlackBase):
         message = re.sub(r"```[a-z]+\n", "```", message)
         # Fix bold
         message = re.sub(r"\*\*(.*?)\*\*", r"*\1*", message)
+        # Fix headings - make them bold instead
+        message = re.sub(r"^(#+) (.*)$", r"*\2*", message, flags=re.MULTILINE)
 
         # Reformat a table to be Slack compatible
         message = self.convert_markdown_tables(message)
