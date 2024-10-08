@@ -127,7 +127,7 @@ class SlackOutput(SlackBase):
         last_streamed_chunk = content.get("last_streamed_chunk")
         uuid = content.get("uuid")
         channel = message_info.get("channel")
-        thread_ts = message_info.get("ts")
+        thread_ts = message_info.get("thread_ts")
         ack_msg_ts = message_info.get("ack_msg_ts")
 
         if not channel:
@@ -153,7 +153,7 @@ class SlackOutput(SlackBase):
             messages = message.get_data("previous:text")
             stream = message.get_data("previous:stream")
             files = message.get_data("previous:files") or []
-            thread_ts = message.get_data("previous:ts")
+            thread_ts = message.get_data("previous:thread_ts")
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
             first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
             last_streamed_chunk = message.get_data("previous:last_streamed_chunk")

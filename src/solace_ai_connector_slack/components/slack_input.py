@@ -217,6 +217,10 @@ class SlackReceiver(threading.Thread):
         self.stop_event.wait()
 
     def handle_channel_event(self, event):
+        # Just return if it is a message deleted event or message changed event
+        if event.get("subtype") in ["message_deleted", "message_changed"]:
+            return
+
         # For now, just do the normal handling
         channel_name = self.get_channel_name(event.get("channel"))
         event["channel_name"] = channel_name
@@ -267,7 +271,13 @@ class SlackReceiver(threading.Thread):
         except Exception as e:
             log.error("Error getting team domain: %s", e)
 
-        user_email = self.get_user_email(event["user"])
+        # Determine the thread_ts to put in the message
+        if event.get("channel_type") == "im" and event.get("subtype") == "app_mention":
+            thread_ts = event.get("ts")
+        else:
+            thread_ts = None
+
+        user_email = self.get_user_email(event.get("user"))
         (text, mention_emails) = self.process_text_for_mentions(event["text"])
         payload = {
             "text": text,
@@ -278,11 +288,11 @@ class SlackReceiver(threading.Thread):
             "mentions": mention_emails,
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": event.get("thread_ts"),
             "channel": event.get("channel"),
             "channel_name": event.get("channel_name", ""),
             "subtype": event.get("subtype"),
-            "event_ts": event.get("event_ts"),
+            "ts": event.get("ts"),
+            "thread_ts": thread_ts,
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
         }
@@ -291,10 +301,10 @@ class SlackReceiver(threading.Thread):
             "team_id": event.get("team"),
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": event.get("thread_ts"),
             "channel": event.get("channel"),
             "subtype": event.get("subtype"),
-            "event_ts": event.get("event_ts"),
+            "ts": event.get("ts"),
+            "thread_ts": thread_ts,
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
             "input_type": "slack",
@@ -304,7 +314,7 @@ class SlackReceiver(threading.Thread):
             ack_msg_ts = self.app.client.chat_postMessage(
                 channel=event["channel"],
                 text=self.acknowledgement_message,
-                thread_ts=event.get("thread_ts"),
+                thread_ts=thread_ts,
             ).get("ts")
             user_properties["ack_msg_ts"] = ack_msg_ts
 
@@ -319,8 +329,12 @@ class SlackReceiver(threading.Thread):
         return base64_string
 
     def get_user_email(self, user_id):
-        response = self.app.client.users_info(user=user_id)
-        return response["user"]["profile"].get("email", user_id)
+        try:
+            response = self.app.client.users_info(user=user_id)
+            return response["user"]["profile"].get("email", user_id)
+        except Exception as e:
+            log.error("Error getting user email: %s", e)
+            return user_id
 
     def process_text_for_mentions(self, text):
         mention_emails = []
@@ -423,7 +437,6 @@ class SlackReceiver(threading.Thread):
     def register_handlers(self):
         @self.app.event("message")
         def handle_chat_message(event):
-            print("Got message event: ", event, event.get("channel_type"))
             if event.get("channel_type") == "im":
                 self.handle_event(event)
             elif event.get("channel_type") == "channel":
@@ -435,6 +448,7 @@ class SlackReceiver(threading.Thread):
         def handle_app_mention(event):
             print("Got app_mention event: ", event)
             event["channel_type"] = "im"
+            event["subtype"] = "app_mention"
             event["channel_name"] = self.get_channel_name(event.get("channel"))
             self.handle_event(event)
 
