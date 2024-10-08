@@ -278,7 +278,7 @@ class SlackReceiver(threading.Thread):
             thread_ts = None
 
         user_email = self.get_user_email(event.get("user"))
-        (text, mention_emails) = self.process_text_for_mentions(event["text"])
+        (text, mention_emails) = self.process_text_for_mentions(event.get("text", ""))
         payload = {
             "text": text,
             "files": files,
