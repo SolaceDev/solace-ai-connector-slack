@@ -153,7 +153,7 @@ class SlackOutput(SlackBase):
             messages = message.get_data("previous:text")
             stream = message.get_data("previous:stream")
             files = message.get_data("previous:files") or []
-            thread_ts = message.get_data("previous:ts")
+            thread_ts = message.get_data("previous:reply_to_thread") or message.get_data("previous:thread_ts")
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
             first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
             last_streamed_chunk = message.get_data("previous:last_streamed_chunk")

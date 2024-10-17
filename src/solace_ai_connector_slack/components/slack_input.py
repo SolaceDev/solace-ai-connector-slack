@@ -267,8 +267,21 @@ class SlackReceiver(threading.Thread):
         except Exception as e:
             log.error("Error getting team domain: %s", e)
 
-        user_email = self.get_user_email(event["user"])
+        user_email = self.get_user_email(event.get("user"))
         (text, mention_emails) = self.process_text_for_mentions(event["text"])
+
+        # Determine the thread_ts to put in the message
+        if event.get("channel_type") == "im" and event.get("subtype", event.get("type")) == "app_mention":
+            ts = event.get("ts")
+        else:
+            ts = None
+
+        reply_to = event.get("thread_ts") or ts
+        if reply_to:
+            thread_id = f"{event.get("channel")}_{reply_to}"
+        else:
+            thread_id = event.get("channel")
+
         payload = {
             "text": text,
             "files": files,
@@ -278,33 +291,38 @@ class SlackReceiver(threading.Thread):
             "mentions": mention_emails,
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": event.get("thread_ts"),
+            "ts": ts,
             "channel": event.get("channel"),
             "channel_name": event.get("channel_name", ""),
             "subtype": event.get("subtype"),
-            "event_ts": event.get("event_ts"),
+            "thread_ts":  event.get("thread_ts"),
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
+            "thread_id": thread_id,
+            "reply_to_thread": reply_to,
         }
         user_properties = {
             "user_email": user_email,
             "team_id": event.get("team"),
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": event.get("thread_ts"),
+            "ts": ts,
+            "thread_ts": event.get("thread_ts"),
             "channel": event.get("channel"),
             "subtype": event.get("subtype"),
             "event_ts": event.get("event_ts"),
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
             "input_type": "slack",
+            "thread_id": thread_id,
+            "reply_to_thread": reply_to,
         }
 
         if self.acknowledgement_message and event.get("channel_type") == "im":
             ack_msg_ts = self.app.client.chat_postMessage(
                 channel=event["channel"],
                 text=self.acknowledgement_message,
-                thread_ts=event.get("thread_ts"),
+                thread_ts=reply_to,
             ).get("ts")
             user_properties["ack_msg_ts"] = ack_msg_ts
 
