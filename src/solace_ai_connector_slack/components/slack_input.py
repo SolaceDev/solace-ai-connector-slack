@@ -280,7 +280,7 @@ class SlackReceiver(threading.Thread):
             reply_to = event.get("thread_ts")
 
         if reply_to:
-            thread_id = f"{event.get("channel")}_{reply_to}"
+            thread_id = f"{event.get('channel')}_{reply_to}"
         else:
             thread_id = event.get("channel")
 
