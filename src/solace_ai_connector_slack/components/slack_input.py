@@ -270,13 +270,15 @@ class SlackReceiver(threading.Thread):
         user_email = self.get_user_email(event.get("user"))
         (text, mention_emails) = self.process_text_for_mentions(event["text"])
 
-        # Determine the thread_ts to put in the message
+        # Determine the reply_to thread to put in the message
         if event.get("channel_type") == "im" and event.get("subtype", event.get("type")) == "app_mention":
-            ts = event.get("ts")
+            # First message uses ts, subsequent messages use thread_ts
+            reply_to = event.get("thread_ts") or event.get("ts")
         else:
-            ts = None
+            # First message uses ts, subsequent messages use thread_ts
+            # thread_ts is null in direct messages
+            reply_to = event.get("thread_ts")
 
-        reply_to = event.get("thread_ts") or ts
         if reply_to:
             thread_id = f"{event.get("channel")}_{reply_to}"
         else:
@@ -291,10 +293,11 @@ class SlackReceiver(threading.Thread):
             "mentions": mention_emails,
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": ts,
+            "ts": event.get("ts"),
             "channel": event.get("channel"),
             "channel_name": event.get("channel_name", ""),
             "subtype": event.get("subtype"),
+            "event_ts": event.get("event_ts"),
             "thread_ts":  event.get("thread_ts"),
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
@@ -306,7 +309,7 @@ class SlackReceiver(threading.Thread):
             "team_id": event.get("team"),
             "type": event.get("type"),
             "client_msg_id": event.get("client_msg_id"),
-            "ts": ts,
+            "ts": event.get("ts"),
             "thread_ts": event.get("thread_ts"),
             "channel": event.get("channel"),
             "subtype": event.get("subtype"),
