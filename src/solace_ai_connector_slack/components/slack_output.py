@@ -153,7 +153,7 @@ class SlackOutput(SlackBase):
             messages = message.get_data("previous:text")
             stream = message.get_data("previous:stream")
             files = message.get_data("previous:files") or []
-            thread_ts = message.get_data("previous:reply_to_thread", message.get_data("previous:thread_ts"))
+            reply_to = (message.get_user_properties() or {}).get("reply_to_thread", message.get_data("previous:thread_ts"))
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
             first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
             last_streamed_chunk = message.get_data("previous:last_streamed_chunk")
@@ -200,7 +200,7 @@ class SlackOutput(SlackBase):
                             pass
                     else:
                         response = self.app.client.chat_postMessage(
-                            channel=channel, text=text, thread_ts=thread_ts
+                            channel=channel, text=text, thread_ts=reply_to
                         )
                         streaming_state["ts"] = response["ts"]
 
@@ -210,7 +210,7 @@ class SlackOutput(SlackBase):
                     streaming_state["completed"] = True
                     if not ts:
                         self.app.client.chat_postMessage(
-                            channel=channel, text=text, thread_ts=thread_ts
+                            channel=channel, text=text, thread_ts=reply_to
                         )
                     # if ts:
                     #     self.app.client.chat_update(channel=channel, ts=ts, text=text)
@@ -224,7 +224,7 @@ class SlackOutput(SlackBase):
                 self.app.client.files_upload_v2(
                     channel=channel,
                     file=file_content,
-                    thread_ts=thread_ts,
+                    thread_ts=reply_to,
                     filename=file["name"],
                 )
         except Exception as e:
