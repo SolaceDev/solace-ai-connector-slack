@@ -271,7 +271,10 @@ class SlackReceiver(threading.Thread):
         (text, mention_emails) = self.process_text_for_mentions(event["text"])
 
         # Determine the reply_to thread to put in the message
-        if event.get("channel_type") == "im" and event.get("subtype", event.get("type")) == "app_mention":
+        if (
+            event.get("channel_type") == "im"
+            and event.get("subtype", event.get("type")) == "app_mention"
+        ):
             # First message uses ts, subsequent messages use thread_ts
             reply_to = event.get("thread_ts") or event.get("ts")
         else:
@@ -298,7 +301,7 @@ class SlackReceiver(threading.Thread):
             "channel_name": event.get("channel_name", ""),
             "subtype": event.get("subtype"),
             "event_ts": event.get("event_ts"),
-            "thread_ts":  event.get("thread_ts"),
+            "thread_ts": event.get("thread_ts"),
             "channel_type": event.get("channel_type"),
             "user_id": event.get("user"),
             "thread_id": thread_id,
@@ -325,6 +328,17 @@ class SlackReceiver(threading.Thread):
             ack_msg_ts = self.app.client.chat_postMessage(
                 channel=event["channel"],
                 text=self.acknowledgement_message,
+                blocks=[
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": self.acknowledgement_message,
+                            }
+                        ],
+                    }
+                ],
                 thread_ts=reply_to,
             ).get("ts")
             user_properties["ack_msg_ts"] = ack_msg_ts
@@ -444,7 +458,6 @@ class SlackReceiver(threading.Thread):
     def register_handlers(self):
         @self.app.event("message")
         def handle_chat_message(event):
-            print("Got message event: ", event, event.get("channel_type"))
             if event.get("channel_type") == "im":
                 self.handle_event(event)
             elif event.get("channel_type") == "channel":
