@@ -119,16 +119,27 @@ class SlackOutput(SlackBase):
         self.streaming_state = {}
 
     def invoke(self, message, data):
-        message_info = data.get("message_info")
         content = data.get("content")
+        message_info = data.get("message_info")
+
         text = content.get("text")
-        stream = content.get("stream")
-        first_streamed_chunk = content.get("first_streamed_chunk")
-        last_streamed_chunk = content.get("last_streamed_chunk")
         uuid = content.get("uuid")
-        channel = message_info.get("channel")
+        files = content.get("files")
+        stream = content.get("stream")
+        status_update = content.get("status_update")
+        response_complete = content.get("response_complete")
+        last_streamed_chunk = content.get("last_streamed_chunk")
+        first_streamed_chunk = content.get("first_streamed_chunk")
+
         thread_ts = message_info.get("ts")
+        channel = message_info.get("channel")
         ack_msg_ts = message_info.get("ack_msg_ts")
+
+        if response_complete:
+            status_update = True
+            text = ":checkered_flag: Response complete"
+        elif status_update:
+            text = ":thinking_face: " + text
 
         if not channel:
             log.error("slack_output: No channel specified in message")
@@ -136,15 +147,16 @@ class SlackOutput(SlackBase):
             return None
 
         return {
-            "channel": channel,
             "text": text,
-            "files": content.get("files"),
+            "uuid": uuid,
+            "files": files,
+            "stream": stream,
+            "channel": channel,
             "thread_ts": thread_ts,
             "ack_msg_ts": ack_msg_ts,
-            "stream": stream,
-            "first_streamed_chunk": first_streamed_chunk,
+            "status_update": status_update,
             "last_streamed_chunk": last_streamed_chunk,
-            "uuid": uuid,
+            "first_streamed_chunk": first_streamed_chunk,
         }
 
     def send_message(self, message):
@@ -153,11 +165,14 @@ class SlackOutput(SlackBase):
             messages = message.get_data("previous:text")
             stream = message.get_data("previous:stream")
             files = message.get_data("previous:files") or []
-            thread_ts = message.get_data("previous:reply_to_thread", message.get_data("previous:thread_ts"))
+            thread_ts = message.get_data(
+                "previous:reply_to_thread", message.get_data("previous:thread_ts")
+            )
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
             first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
             last_streamed_chunk = message.get_data("previous:last_streamed_chunk")
             uuid = message.get_data("previous:uuid")
+            status_update = message.get_data("previous:status_update")
 
             if not isinstance(messages, list):
                 if messages is not None:
@@ -189,7 +204,28 @@ class SlackOutput(SlackBase):
 
                     streaming_state["completed"] = last_streamed_chunk
                     ts = streaming_state.get("ts")
-                    if ts:
+                    if status_update:
+                        blocks = [
+                            {
+                                "type": "context",
+                                "elements": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": text,
+                                    }
+                                ],
+                            },
+                        ]
+
+                        if not ts:
+                            ts = ack_msg_ts
+                        try:
+                            self.app.client.chat_update(
+                                channel=channel, ts=ts, text="test", blocks=blocks
+                            )
+                        except Exception:
+                            pass
+                    elif ts:
                         try:
                             self.app.client.chat_update(
                                 channel=channel, ts=ts, text=text
@@ -212,12 +248,6 @@ class SlackOutput(SlackBase):
                         self.app.client.chat_postMessage(
                             channel=channel, text=text, thread_ts=thread_ts
                         )
-                    # if ts:
-                    #     self.app.client.chat_update(channel=channel, ts=ts, text=text)
-                    # else:
-                    #     self.app.client.chat_postMessage(
-                    #         channel=channel, text=text, thread_ts=thread_ts
-                    #     )
 
             for file in files:
                 file_content = base64.b64decode(file["content"])
@@ -231,12 +261,6 @@ class SlackOutput(SlackBase):
             log.error("Error sending slack message: %s", e)
 
         super().send_message(message)
-
-        try:
-            if ack_msg_ts:
-                self.app.client.chat_delete(channel=channel, ts=ack_msg_ts)
-        except Exception:
-            pass
 
     def fix_markdown(self, message):
         # Fix links - the LLM is very stubborn about giving markdown links
