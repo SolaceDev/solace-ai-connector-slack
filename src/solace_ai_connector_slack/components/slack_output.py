@@ -125,11 +125,11 @@ class SlackOutput(SlackBase):
         text = content.get("text")
         uuid = content.get("uuid")
         files = content.get("files")
-        stream = content.get("stream")
+        streaming = content.get("streaming")
         status_update = content.get("status_update")
         response_complete = content.get("response_complete")
-        last_streamed_chunk = content.get("last_streamed_chunk")
-        first_streamed_chunk = content.get("first_streamed_chunk")
+        last_chunk = content.get("last_chunk")
+        first_chunk = content.get("first_chunk")
 
         thread_ts = message_info.get("ts")
         channel = message_info.get("channel")
@@ -150,25 +150,25 @@ class SlackOutput(SlackBase):
             "text": text,
             "uuid": uuid,
             "files": files,
-            "stream": stream,
+            "streaming": streaming,
             "channel": channel,
             "thread_ts": thread_ts,
             "ack_msg_ts": ack_msg_ts,
             "status_update": status_update,
-            "last_streamed_chunk": last_streamed_chunk,
-            "first_streamed_chunk": first_streamed_chunk,
+            "last_chunk": last_chunk,
+            "first_chunk": first_chunk,
         }
 
     def send_message(self, message):
         try:
             channel = message.get_data("previous:channel")
             messages = message.get_data("previous:text")
-            stream = message.get_data("previous:stream")
+            streaming = message.get_data("previous:streaming")
             files = message.get_data("previous:files") or []
             reply_to = (message.get_user_properties() or {}).get("reply_to_thread", message.get_data("previous:thread_ts"))
             ack_msg_ts = message.get_data("previous:ack_msg_ts")
-            first_streamed_chunk = message.get_data("previous:first_streamed_chunk")
-            last_streamed_chunk = message.get_data("previous:last_streamed_chunk")
+            first_chunk = message.get_data("previous:first_chunk")
+            last_chunk = message.get_data("previous:last_chunk")
             uuid = message.get_data("previous:uuid")
             status_update = message.get_data("previous:status_update")
 
@@ -188,19 +188,19 @@ class SlackOutput(SlackBase):
                 if index != 0:
                     text = "\n" + text
 
-                if first_streamed_chunk:
+                if first_chunk:
                     streaming_state = self.add_streaming_state(uuid)
                 else:
                     streaming_state = self.get_streaming_state(uuid)
                     if not streaming_state:
                         streaming_state = self.add_streaming_state(uuid)
 
-                if stream:
+                if streaming:
                     if streaming_state.get("completed"):
                         # We can sometimes get a message after the stream has completed
                         continue
 
-                    streaming_state["completed"] = last_streamed_chunk
+                    streaming_state["completed"] = last_chunk
                     ts = streaming_state.get("ts")
                     if status_update:
                         blocks = [
