@@ -15,6 +15,8 @@ permissions:
 jobs:
   ci:
     uses: SolaceDev/solace-public-workflows/.github/workflows/hatch_ci.yml@main
+    with:
+      min-python-version: "3.10"
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
