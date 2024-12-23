@@ -62,7 +62,9 @@ class SlackBase(ComponentBase, ABC):
             "user": body['user'],
             "feedback": feedback,
             "interface": "slack",
-            "channel": body['channel'],
+            "interface_data": {
+                "channel": body['channel']
+            },
             "message": body['message'],
             "data": value_object
         }
