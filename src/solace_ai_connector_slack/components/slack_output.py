@@ -1,5 +1,6 @@
 import base64
 import re
+import json
 from datetime import datetime
 
 from prettytable import PrettyTable
@@ -35,6 +36,21 @@ info = {
             "description": "Correct markdown formatting in messages to conform to Slack markdown.",
             "default": "true",
         },
+        {
+            "name": "feedback",
+            "type": "boolean",
+            "description": "Collect thumbs up/thumbs down from users.",
+        },
+        {
+            "name": "feedback_post_url",
+            "type": "string",
+            "description": "URL to send feedback to.",
+        },
+        {
+            "name": "feedback_post_headers",
+            "type": "object",
+            "description": "Headers to send with feedback post.",
+        }
     ],
     "input_schema": {
         "type": "object",
@@ -117,6 +133,7 @@ class SlackOutput(SlackBase):
         super().__init__(info, **kwargs)
         self.fix_formatting = self.get_config("correct_markdown_formatting", True)
         self.streaming_state = {}
+        self.register_action_handlers()
 
     def invoke(self, message, data):
         content = data.get("content")
@@ -134,6 +151,8 @@ class SlackOutput(SlackBase):
         thread_ts = message_info.get("ts")
         channel = message_info.get("channel")
         ack_msg_ts = message_info.get("ack_msg_ts")
+
+        feedback_data = data.get("feedback_data", {})
 
         if response_complete:
             status_update = True
@@ -157,6 +176,8 @@ class SlackOutput(SlackBase):
             "status_update": status_update,
             "last_chunk": last_chunk,
             "first_chunk": first_chunk,
+            "response_complete": response_complete,
+            "feedback_data": feedback_data,
         }
 
     def send_message(self, message):
@@ -171,6 +192,8 @@ class SlackOutput(SlackBase):
             last_chunk = message.get_data("previous:last_chunk")
             uuid = message.get_data("previous:uuid")
             status_update = message.get_data("previous:status_update")
+            response_complete = message.get_data("previous:response_complete")
+            feedback_data = message.get_data("previous:feedback_data") or {}
 
             if not isinstance(messages, list):
                 if messages is not None:
@@ -255,6 +278,14 @@ class SlackOutput(SlackBase):
                     thread_ts=reply_to,
                     filename=file["name"],
                 )
+
+            if streaming and response_complete and self.feedback_enabled:
+                blocks = self.create_feedback_blocks(feedback_data, channel, reply_to)
+                response = self.app.client.chat_postMessage(
+                    channel=channel, text="feedback", thread_ts=reply_to, blocks=blocks
+                )
+
+
         except Exception as e:
             log.error("Error sending slack message: %s", e)
 
@@ -320,3 +351,38 @@ class SlackOutput(SlackBase):
 
         pattern = r"\|.*\|[\n\r]+\|[-:| ]+\|[\n\r]+((?:\|.*\|[\n\r]+)+)"
         return re.sub(pattern, markdown_to_fixed_width, message)
+
+    @staticmethod
+    def create_feedback_blocks(value_object, channel, thread_ts):
+        feedback_data = {
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "feedback_data": value_object
+        }
+        return [
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "👍"
+                        },
+                        "value": json.dumps(feedback_data),
+                        "action_id": "thumbs_up_action"
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "👎"
+                        },
+                        "value": json.dumps(feedback_data),
+                        "action_id": "thumbs_down_action"
+                    }
+                ]
+            }
+        ]

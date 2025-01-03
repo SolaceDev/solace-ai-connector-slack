@@ -1,6 +1,10 @@
 """Base class for all Slack components"""
 
 from abc import ABC, abstractmethod
+import json
+import os
+import requests
+
 from slack_bolt import App  # pylint: disable=import-error
 from solace_ai_connector.components.component_base import ComponentBase
 
@@ -15,6 +19,9 @@ class SlackBase(ComponentBase, ABC):
         self.max_file_size = self.get_config("max_file_size", 20)
         self.max_total_file_size = self.get_config("max_total_file_size", 20)
         self.share_slack_connection = self.get_config("share_slack_connection")
+        self.feedback_enabled = self.get_config("feedback", False)
+        self.feedback_post_url = self.get_config("feedback_post_url", None)
+        self.feedback_post_headers = self.get_config("feedback_post_headers", {})
 
         if self.share_slack_connection:
             if self.slack_bot_token not in SlackBase._slack_apps:
@@ -34,3 +41,52 @@ class SlackBase(ComponentBase, ABC):
 
     def __repr__(self):
         return self.__str__()
+    
+    def register_action_handlers(self):
+        @self.app.action("thumbs_up_action")
+        def handle_thumbs_up(ack, body, say):
+            self.feedback(ack, body, "thumbs_up")
+
+        @self.app.action("thumbs_down_action")
+        def handle_thumbs_down(ack, body, say):
+            self.feedback(ack, body, "thumbs_down")
+
+    def feedback(self, ack, body, feedback):
+        # Acknowledge the action request
+        ack()
+
+        # Check if feedback is enabled and the feedback post URL is set
+        if not self.feedback_enabled or not self.feedback_post_url:
+            self.logger.error("Feedback is not enabled or feedback post URL is not set.")
+            return
+        
+        # Respond to the action
+        value_object = json.loads(body['actions'][0]['value'])
+        feedback_data = value_object.get("feedback_data", {})
+        channel = value_object.get("channel", None)
+        thread_ts = value_object.get("thread_ts", None)
+        
+        self.app.client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Thanks for the feedback, <@{body['user']['id']}>!",
+        )
+
+        rest_body = {
+            "user": body['user'],
+            "feedback": feedback,
+            "interface": "slack",
+            "interface_data": {
+                "channel": body['channel']
+            },
+            "data": feedback_data
+        }
+
+        try:
+            requests.post(
+                url=self.feedback_post_url,
+                headers=self.feedback_post_headers,
+                data=json.dumps(rest_body)
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to post feedback: {str(e)}")
