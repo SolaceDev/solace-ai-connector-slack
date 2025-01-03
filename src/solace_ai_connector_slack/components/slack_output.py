@@ -280,7 +280,7 @@ class SlackOutput(SlackBase):
                 )
 
             if streaming and response_complete and self.feedback_enabled:
-                blocks = self.create_feedback_blocks(feedback_data)
+                blocks = self.create_feedback_blocks(feedback_data, channel, reply_to)
                 response = self.app.client.chat_postMessage(
                     channel=channel, text="feedback", thread_ts=reply_to, blocks=blocks
                 )
@@ -353,7 +353,12 @@ class SlackOutput(SlackBase):
         return re.sub(pattern, markdown_to_fixed_width, message)
 
     @staticmethod
-    def create_feedback_blocks(value_object):
+    def create_feedback_blocks(value_object, channel, thread_ts):
+        feedback_data = {
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "feedback_data": value_object
+        }
         return [
             {
                 "type": "actions",
@@ -365,7 +370,7 @@ class SlackOutput(SlackBase):
                             "emoji": True,
                             "text": "👍"
                         },
-                        "value": json.dumps(value_object),
+                        "value": json.dumps(feedback_data),
                         "action_id": "thumbs_up_action"
                     },
                     {
@@ -375,7 +380,7 @@ class SlackOutput(SlackBase):
                             "emoji": True,
                             "text": "👎"
                         },
-                        "value": json.dumps(value_object),
+                        "value": json.dumps(feedback_data),
                         "action_id": "thumbs_down_action"
                     }
                 ]

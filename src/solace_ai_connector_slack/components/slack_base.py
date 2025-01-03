@@ -45,19 +45,27 @@ class SlackBase(ComponentBase, ABC):
     def register_action_handlers(self):
         @self.app.action("thumbs_up_action")
         def handle_thumbs_up(ack, body, say):
-            self.feedback(ack, body, say, "thumbs_up")
+            self.feedback(ack, body, "thumbs_up")
 
         @self.app.action("thumbs_down_action")
         def handle_thumbs_down(ack, body, say):
-            self.feedback(ack, body, say, "thumbs_down")
+            self.feedback(ack, body, "thumbs_down")
 
-    def feedback(self, ack, body, say, feedback):
+    def feedback(self, ack, body, feedback):
         # Acknowledge the action request
         ack()
+
         # Respond to the action
         value_object = json.loads(body['actions'][0]['value'])
-        say(f"Thanks for the feedback, <@{body['user']['id']}>!")
-
+        feedback_data = value_object.get("feedback_data", {})
+        channel = value_object.get("channel", None)
+        thread_ts = value_object.get("thread_ts", None)
+        
+        self.app.client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Thanks for the feedback, <@{body['user']['id']}>!",
+        )
         rest_body = {
             "user": body['user'],
             "feedback": feedback,
@@ -65,8 +73,7 @@ class SlackBase(ComponentBase, ABC):
             "interface_data": {
                 "channel": body['channel']
             },
-            "message": body['message'],
-            "data": value_object
+            "data": feedback_data
         }
 
         try:
