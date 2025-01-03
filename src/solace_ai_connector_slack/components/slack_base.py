@@ -55,6 +55,11 @@ class SlackBase(ComponentBase, ABC):
         # Acknowledge the action request
         ack()
 
+        # Check if feedback is enabled and the feedback post URL is set
+        if not self.feedback_enabled or not self.feedback_post_url:
+            self.logger.error("Feedback is not enabled or feedback post URL is not set.")
+            return
+        
         # Respond to the action
         value_object = json.loads(body['actions'][0]['value'])
         feedback_data = value_object.get("feedback_data", {})
@@ -66,6 +71,7 @@ class SlackBase(ComponentBase, ABC):
             thread_ts=thread_ts,
             text=f"Thanks for the feedback, <@{body['user']['id']}>!",
         )
+
         rest_body = {
             "user": body['user'],
             "feedback": feedback,
@@ -77,7 +83,7 @@ class SlackBase(ComponentBase, ABC):
         }
 
         try:
-            response = requests.post(
+            requests.post(
                 url=self.feedback_post_url,
                 headers=self.feedback_post_headers,
                 data=json.dumps(rest_body)
