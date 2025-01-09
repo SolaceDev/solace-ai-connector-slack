@@ -111,9 +111,16 @@ class SlackBase(ComponentBase, ABC):
         thread_ts = value_object.get("thread_ts", None)
         user_id = body['user']['id']
         
+        block_id = feedback_data.get("block_id", "thumbs_up_down")
+
+        # Remove the block_id from the feedback_data if it exists
+        # For negative feedback, the feedback_data becomes the block_id
+        # and it gets too big if we also include the previous block_id
+        feedback_data.pop("block_id", None)
+
         # We want to find the previous message in the thread that has the thumbs_up_down block
         # and then overwrite it
-        prev_message_ts = self._find_previous_message(thread_ts, channel, "thumbs_up_down")
+        prev_message_ts = self._find_previous_message(thread_ts, channel, block_id)
 
         if prev_message_ts is None:
             # We couldn't find the previous message
@@ -164,7 +171,7 @@ class SlackBase(ComponentBase, ABC):
             response = self.app.client.conversations_history(
                 channel=channel,
                 latest=thread_ts,
-                limit=5,
+                limit=100,
                 inclusive=True
             )
         else:
@@ -172,7 +179,7 @@ class SlackBase(ComponentBase, ABC):
             response = self.app.client.conversations_replies(
                 channel=channel,
                 ts=thread_ts,
-                limit=5,
+                limit=100,
             )
 
         messages = response.get("messages", None)
