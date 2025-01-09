@@ -219,7 +219,7 @@ class SlackBase(ComponentBase, ABC):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"1. {message}, <@{user_id}>!",
+                        "text": f"{message}, <@{user_id}>!",
                     }
                 }
     
