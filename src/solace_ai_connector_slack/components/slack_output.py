@@ -362,6 +362,7 @@ class SlackOutput(SlackBase):
         return [
             {
                 "type": "actions",
+                "block_id": "thumbs_up_down",
                 "elements": [
                     {
                         "type": "button",
@@ -383,6 +384,7 @@ class SlackOutput(SlackBase):
                         "value": json.dumps(feedback_data),
                         "action_id": "thumbs_down_action"
                     }
-                ]
+                ],
             }
         ]
+    

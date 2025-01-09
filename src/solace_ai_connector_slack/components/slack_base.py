@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 import json
-import os
 import requests
 
 from slack_bolt import App  # pylint: disable=import-error
@@ -45,13 +44,58 @@ class SlackBase(ComponentBase, ABC):
     def register_action_handlers(self):
         @self.app.action("thumbs_up_action")
         def handle_thumbs_up(ack, body, say):
-            self.feedback(ack, body, "thumbs_up")
+            self.thumbs_up_down_feedback_handler(ack, body, "thumbs_up")
 
         @self.app.action("thumbs_down_action")
         def handle_thumbs_down(ack, body, say):
-            self.feedback(ack, body, "thumbs_down")
+            self.thumbs_up_down_feedback_handler(ack, body, "thumbs_down")
 
-    def feedback(self, ack, body, feedback):
+        @self.app.action("feedback_text_reason")
+        def handle_feedback_input(ack, body, say):
+            self.feedback_reason_handler(ack, body)
+
+    def feedback_reason_handler(self, ack, body):
+        # Acknowledge the action request
+        ack()
+        
+        # This is a bit of a hack but slack leaves us no choice.
+        # The block_id is a stringified JSON object that contains the channel, thread_ts and feedback.
+        block_id = body['actions'][0]['block_id']
+        value_object = json.loads(block_id)
+        channel = value_object.get("channel", None)
+        thread_ts = value_object.get("thread_ts", None)
+        user_id = body['user']['id']
+        feedback = value_object.get("feedback", "thumbs_down")
+        
+        # Get the input text from the input block plain_input
+        feedback_reason = body["state"]["values"][block_id]["feedback_text_reason"]["value"]
+
+        # Get the previous message in the thread with the block_id
+        prev_message_ts = self.find_previous_message(thread_ts, channel, block_id)
+
+        thanks_message_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+        if prev_message_ts is None:
+            # We couldn't find the previous message
+            # Just add a new message with a thank you message
+            self.app.client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text="Thanks!",
+                blocks=[thanks_message_block]
+            )
+        else:
+            # Update the previous message with a thank you message
+            self.app.client.chat_update(
+                channel=channel,
+                ts=prev_message_ts,
+                text="Thanks",  # Fallback text
+                blocks=[thanks_message_block]
+            )
+
+        self.send_feedback_rest_post(body, feedback, feedback_reason, value_object.get("feedback_data", "no feedback provided"))       
+
+
+    def thumbs_up_down_feedback_handler(self, ack, body, feedback):
         # Acknowledge the action request
         ack()
 
@@ -65,13 +109,74 @@ class SlackBase(ComponentBase, ABC):
         feedback_data = value_object.get("feedback_data", {})
         channel = value_object.get("channel", None)
         thread_ts = value_object.get("thread_ts", None)
+        user_id = body['user']['id']
         
-        self.app.client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text=f"Thanks for the feedback, <@{body['user']['id']}>!",
-        )
+        # We want to find the previous message in the thread that has the thumbs_up_down block
+        # and then overwrite it
+        prev_message_ts = self.find_previous_message(thread_ts, channel, "thumbs_up_down")
 
+        if prev_message_ts is None:
+            # We couldn't find the previous message
+            # Just add a new message with a thank you message
+            thanks_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+            self.app.client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text="Thanks!",
+                blocks=[thanks_block]
+            )
+        else:
+
+            # If it's a thumbs up, we just thank them but if it's a thumbs down, we ask for a reason
+            if feedback == "thumbs_up":
+                next_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+
+            else:
+                value_object["feedback"] = feedback
+                next_block = SlackBase.create_feedback_reason_block(value_object)
+
+            self.app.client.chat_update(
+                channel=channel,
+                ts=prev_message_ts,
+                text="Thanks!",
+                blocks=[next_block]
+            )
+
+        if feedback == "thumbs_up" or prev_message_ts is None:
+            self.send_feedback_rest_post(body, feedback, None, feedback_data)
+
+    def find_previous_message(self, thread_ts, channel, block_id):
+        if thread_ts is None:
+            # Get the history of the conversation
+            response = self.app.client.conversations_history(
+                channel=channel,
+                latest=thread_ts,
+                limit=5,
+                inclusive=True
+            )
+        else:
+            # We're in a thread, get the replies
+            response = self.app.client.conversations_replies(
+                channel=channel,
+                ts=thread_ts,
+                limit=5,
+            )
+
+        messages = response.get("messages", None)
+        blocks = None
+        message_ts = None
+
+        # loop over the messages until we find the message with a block id of thumbs_up_down
+        for message in messages:
+            blocks = message.get("blocks", [])
+            for block in blocks:
+                if block.get("block_id", None) == block_id:
+                    message_ts = message.get("ts", None)
+                    break
+        
+        return message_ts
+
+    def send_feedback_rest_post(self, body, feedback, feedback_reason, feedback_data):
         rest_body = {
             "user": body['user'],
             "feedback": feedback,
@@ -82,6 +187,9 @@ class SlackBase(ComponentBase, ABC):
             "data": feedback_data
         }
 
+        if feedback_reason:
+            rest_body["feedback_reason"] = feedback_reason
+
         try:
             requests.post(
                 url=self.feedback_post_url,
@@ -90,3 +198,49 @@ class SlackBase(ComponentBase, ABC):
             )
         except Exception as e:
             self.logger.error(f"Failed to post feedback: {str(e)}")
+
+    @staticmethod
+    def create_feedback_thanks_block(user_id, feedback):
+        message = SlackBase.create_feedback_message(feedback)
+        return {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"1. {message}, <@{user_id}>!",
+                    }
+                }
+    
+    @staticmethod
+    def create_feedback_message(feedback):
+        if feedback == "thumbs_up":
+            message = f"Thanks for the thumbs up"
+        else:
+            message = f"Thanks for the feedback"
+        return message
+    
+    @staticmethod
+    def create_feedback_reason_block(feedback_data):
+        return {
+                "type": "input",
+
+                # This is a bit of a hack but slack leaves us no choice.
+                # The block_id is a stringified JSON object that contains # the feedback specific data. We need this state in the
+                # action handler to respond to the user.
+                "block_id": json.dumps(feedback_data),
+                "dispatch_action": True,
+                "label": {
+                    "type": "plain_text",
+                    "text": " "
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "feedback_text_reason",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "How can we improve the response?"
+                    },
+                    "dispatch_action_config": {
+                    "trigger_actions_on": ["on_enter_pressed"]
+                    }
+                }
+            }
