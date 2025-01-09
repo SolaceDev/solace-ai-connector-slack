@@ -71,9 +71,9 @@ class SlackBase(ComponentBase, ABC):
         feedback_reason = body["state"]["values"][block_id]["feedback_text_reason"]["value"]
 
         # Get the previous message in the thread with the block_id
-        prev_message_ts = self.find_previous_message(thread_ts, channel, block_id)
+        prev_message_ts = self._find_previous_message(thread_ts, channel, block_id)
 
-        thanks_message_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+        thanks_message_block = SlackBase._create_feedback_thanks_block(user_id, feedback)
         if prev_message_ts is None:
             # We couldn't find the previous message
             # Just add a new message with a thank you message
@@ -84,7 +84,7 @@ class SlackBase(ComponentBase, ABC):
                 blocks=[thanks_message_block]
             )
         else:
-            # Update the previous message with a thank you message
+            # Overwrite the previous message with a thank you message
             self.app.client.chat_update(
                 channel=channel,
                 ts=prev_message_ts,
@@ -92,7 +92,7 @@ class SlackBase(ComponentBase, ABC):
                 blocks=[thanks_message_block]
             )
 
-        self.send_feedback_rest_post(body, feedback, feedback_reason, value_object.get("feedback_data", "no feedback provided"))       
+        self._send_feedback_rest_post(body, feedback, feedback_reason, value_object.get("feedback_data", "no feedback provided"))       
 
 
     def thumbs_up_down_feedback_handler(self, ack, body, feedback):
@@ -113,12 +113,12 @@ class SlackBase(ComponentBase, ABC):
         
         # We want to find the previous message in the thread that has the thumbs_up_down block
         # and then overwrite it
-        prev_message_ts = self.find_previous_message(thread_ts, channel, "thumbs_up_down")
+        prev_message_ts = self._find_previous_message(thread_ts, channel, "thumbs_up_down")
 
         if prev_message_ts is None:
             # We couldn't find the previous message
             # Just add a new message with a thank you message
-            thanks_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+            thanks_block = SlackBase._create_feedback_thanks_block(user_id, feedback)
             self.app.client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -129,11 +129,11 @@ class SlackBase(ComponentBase, ABC):
 
             # If it's a thumbs up, we just thank them but if it's a thumbs down, we ask for a reason
             if feedback == "thumbs_up":
-                next_block = SlackBase.create_feedback_thanks_block(user_id, feedback)
+                next_block = SlackBase._create_feedback_thanks_block(user_id, feedback)
 
             else:
                 value_object["feedback"] = feedback
-                next_block = SlackBase.create_feedback_reason_block(value_object)
+                next_block = SlackBase._create_feedback_reason_block(value_object)
 
             self.app.client.chat_update(
                 channel=channel,
@@ -143,9 +143,22 @@ class SlackBase(ComponentBase, ABC):
             )
 
         if feedback == "thumbs_up" or prev_message_ts is None:
-            self.send_feedback_rest_post(body, feedback, None, feedback_data)
+            self._send_feedback_rest_post(body, feedback, None, feedback_data)
 
-    def find_previous_message(self, thread_ts, channel, block_id):
+    def _find_previous_message(self, thread_ts, channel, block_id):
+        """Find a previous message in a Slack conversation or thread based on a block_id.
+        This method searches through the recent message history of a Slack conversation or thread
+        to find a message containing a block with a specific block_id.
+        Args:
+            thread_ts (str, optional): The timestamp of the thread. If None, searches in main channel history.
+            channel (str): The ID of the Slack channel to search in.
+            block_id (str): The block ID to search for within messages.
+        Returns:
+            str or None: The timestamp (ts) of the message containing the specified block_id,
+                        or None if no matching message is found.
+        Example:
+            message_ts = find_previous_message('1234567890.123456', 'C0123ABCD', 'thumbs_up_down')
+        """
         if thread_ts is None:
             # Get the history of the conversation
             response = self.app.client.conversations_history(
@@ -176,7 +189,7 @@ class SlackBase(ComponentBase, ABC):
         
         return message_ts
 
-    def send_feedback_rest_post(self, body, feedback, feedback_reason, feedback_data):
+    def _send_feedback_rest_post(self, body, feedback, feedback_reason, feedback_data):
         rest_body = {
             "user": body['user'],
             "feedback": feedback,
@@ -200,8 +213,8 @@ class SlackBase(ComponentBase, ABC):
             self.logger.error(f"Failed to post feedback: {str(e)}")
 
     @staticmethod
-    def create_feedback_thanks_block(user_id, feedback):
-        message = SlackBase.create_feedback_message(feedback)
+    def _create_feedback_thanks_block(user_id, feedback):
+        message = SlackBase._create_feedback_message(feedback)
         return {
                     "type": "section",
                     "text": {
@@ -211,7 +224,7 @@ class SlackBase(ComponentBase, ABC):
                 }
     
     @staticmethod
-    def create_feedback_message(feedback):
+    def _create_feedback_message(feedback):
         if feedback == "thumbs_up":
             message = f"Thanks for the thumbs up"
         else:
@@ -219,7 +232,7 @@ class SlackBase(ComponentBase, ABC):
         return message
     
     @staticmethod
-    def create_feedback_reason_block(feedback_data):
+    def _create_feedback_reason_block(feedback_data):
         return {
                 "type": "input",
 
