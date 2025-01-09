@@ -387,4 +387,3 @@ class SlackOutput(SlackBase):
                 ],
             }
         ]
-    
