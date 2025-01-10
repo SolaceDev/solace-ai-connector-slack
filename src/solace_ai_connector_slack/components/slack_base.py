@@ -67,8 +67,14 @@ class SlackBase(ComponentBase, ABC):
         user_id = body['user']['id']
         feedback = value_object.get("feedback", "thumbs_down")
         
-        # Get the input text from the input block plain_input
-        feedback_reason = body["state"]["values"][block_id]["feedback_text_reason"]["value"]
+        # Get the input text from the input block
+        feedback_reason = (body
+            .get("state", {})
+            .get("values", {})
+            .get(block_id, {})
+            .get("feedback_text_reason", {})
+            .get("value", None)
+        )
 
         # Get the previous message in the thread with the block_id
         prev_message_ts = self._find_previous_message(thread_ts, channel, block_id)
