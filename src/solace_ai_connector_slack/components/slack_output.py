@@ -359,9 +359,15 @@ class SlackOutput(SlackBase):
             "thread_ts": thread_ts,
             "feedback_data": value_object
         }
+
+        # Create a unique id for the feedback block_id (max 8 characters)
+        block_id = "thumbs_up_down" + str(hash(str(feedback_data)))[-8:]
+        feedback_data["feedback_data"]["block_id"] = block_id
+
         return [
             {
                 "type": "actions",
+                "block_id": block_id,
                 "elements": [
                     {
                         "type": "button",
@@ -383,6 +389,6 @@ class SlackOutput(SlackBase):
                         "value": json.dumps(feedback_data),
                         "action_id": "thumbs_down_action"
                     }
-                ]
+                ],
             }
         ]
