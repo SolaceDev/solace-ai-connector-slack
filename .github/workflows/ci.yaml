@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   ci:
-    uses: SolaceDev/solace-public-workflows/.github/workflows/hatch_ci.yml@ws_conf_test
+    uses: SolaceDev/solace-public-workflows/.github/workflows/hatch_ci.yml@ws_scan_test
     with:
       min-python-version: "3.10"
       whitesource_product_name: "solaceai"
